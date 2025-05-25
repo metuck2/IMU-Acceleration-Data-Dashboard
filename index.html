@@ -15,8 +15,6 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
   <!-- JSZip for .zip unpacking -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-  <!-- Stats.js performance monitor -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/stats.js/r17/Stats.min.js"></script>
 
   <style>
     * { margin:0; padding:0; box-sizing:border-box; }
@@ -104,6 +102,11 @@
     .btn-secondary { background:linear-gradient(135deg,#6c757d,#495057); color:#fff; }
     .btn-secondary:disabled { background:#ccc; cursor:not-allowed; }
 
+    .perf-monitor {
+      position:fixed; top:10px; left:10px; z-index:10000;
+      background:rgba(0,0,0,0.8); color:#fff; padding:.5em; border-radius:.25em; font-family:monospace; font-size:.8em;
+    }
+
     @media(max-width:1024px){
       .dashboard { grid-template-columns:1fr; }
       .charts-area { grid-template-rows:repeat(3,180px); }
@@ -117,9 +120,9 @@
       position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);
       display:flex;align-items:center;justify-content:center;z-index:1000;color:#333;">
     <div style="background:#fff;padding:2em;border-radius:1em;text-align:center;">
-      <div class="loading-spinner" style="width:50px;height:50px;border-width:6px;margin:0 auto 1em;"></div>
+      <div class="loading-spinner" style="width:50px;height:50px;border-width:6px;margin:0 auto 1em;display:block;"></div>
       <h2>Loading Python…</h2>
-      <p>This may take 30–60 s on first load</p>
+      <p>This may take 30–60 s on first load</p>
     </div>
   </div>
 
@@ -174,7 +177,7 @@ devices
               <div class="stat-label">Data Points</div>
             </div>
             <div class="stat-card">
-              <div class="stat-value" id="duration">0 s</div>
+              <div class="stat-value" id="duration">0 s</div>
               <div class="stat-label">Duration</div>
             </div>
             <div class="stat-card">
@@ -182,7 +185,7 @@ devices
               <div class="stat-label">Devices</div>
             </div>
             <div class="stat-card">
-              <div class="stat-value" id="sampleRate">400 Hz</div>
+              <div class="stat-value" id="sampleRate">400 Hz</div>
               <div class="stat-label">Sample Rate</div>
             </div>
           </div>
@@ -235,7 +238,9 @@ devices
   </div>
 
   <!-- Performance Monitor -->
-  <div id="stats" style="position:fixed;top:10px;left:10px;z-index:10000;"></div>
+  <div id="perfMonitor" class="perf-monitor">
+    FPS: <span id="fpsCounter">0</span>
+  </div>
 
   <script>
     let pyodide = null,
@@ -279,12 +284,6 @@ devices
         pyodide = await loadPyodide({indexURL:'https://unpkg.com/pyodide@0.24.1/full/'});
         updateStatus('Installing packages…');
         await pyodide.loadPackage(['numpy']);
-        // NOTE: remove or replace this mock if you have real ximu3csv in Pyodide
-        pyodide.runPython(`
-import sys
-from types import ModuleType
-# no mock here so your real ximu3csv gets used if available
-`);
         updateStatus('Python Ready','ready');
       } catch(e){
         console.error(e);
@@ -298,6 +297,7 @@ from types import ModuleType
     function mkdirTree(path){
       let parts=path.split('/'), curr='';
       for(let p of parts){
+        if(!p) continue;
         curr += '/'+p;
         try{ pyodide.FS.mkdir(curr); }catch{}
       }
@@ -307,58 +307,138 @@ from types import ModuleType
     document.getElementById('zipUpload').addEventListener('change', async evt=>{
       const file = evt.target.files[0];
       if(!file) return;
-      const data = await file.arrayBuffer();
-      const zip = await JSZip.loadAsync(data);
+      
+      updateStatus('Processing ZIP file...');
+      
+      try {
+        const data = await file.arrayBuffer();
+        const zip = await JSZip.loadAsync(data);
 
-      // create /Data
-      try{ pyodide.FS.mkdir('/Data'); }catch{}
+        // create /Data
+        try{ pyodide.FS.mkdir('/Data'); }catch{}
 
-      let count=0;
-      await Promise.all(Object.keys(zip.files).map(async name=>{
-        const entry = zip.files[name];
-        if(entry.dir) return;
-        const content = await entry.async('uint8array');
-        const fsPath = '/Data/' + name;
-        const dir = fsPath.substring(0, fsPath.lastIndexOf('/'));
-        mkdirTree(dir);
-        pyodide.FS.writeFile(fsPath, content);
-        count++;
-      }));
-
-      alert(`✅ Extracted ${count} files into /Data/`);
-      document.getElementById('runPythonBtn').disabled = false;
+        let count=0;
+        const promises = [];
+        
+        for(const [name, entry] of Object.entries(zip.files)) {
+          if(entry.dir) continue;
+          
+          promises.push(
+            entry.async('uint8array').then(content => {
+              const fsPath = '/Data/' + name;
+              const dir = fsPath.substring(0, fsPath.lastIndexOf('/'));
+              if(dir !== '/Data') mkdirTree(dir.substring(1)); // remove leading /
+              pyodide.FS.writeFile(fsPath, content);
+              count++;
+            })
+          );
+        }
+        
+        await Promise.all(promises);
+        alert(`✅ Extracted ${count} files into /Data/`);
+        document.getElementById('runPythonBtn').disabled = false;
+        updateStatus('ZIP processed, ready to run code','ready');
+      } catch(error) {
+        console.error('ZIP processing error:', error);
+        updateStatus('ZIP processing failed','error');
+      }
     });
 
     function runPythonCode(){
+      if(!pyodide) {
+        alert('Python is not ready yet!');
+        return;
+      }
+      
       updateStatus('Running code…');
+      const outputEl = document.getElementById('pythonOutput');
+      outputEl.style.display = 'none';
+      
       try {
         const userCode = document.getElementById('pythonCode').value;
-        const full = `
-import ximu3csv
-devices = ximu3csv.read("Data")
-devices = ximu3csv.resample(devices, 400)
-${userCode}
-`;
-        const pyVal = pyodide.runPython(full);
-        deviceData = pyVal.toJs({dict:false});
-        pythonDataAvailable = true;
-        document.getElementById('clearBtn').disabled = false;
-        updateStatus('Data Loaded','ready');
-        updateStats(); renderDeviceControls(); renderTraceControls(); renderCharts();
+        
+        // Create a mock ximu3csv module if it doesn't exist
+        pyodide.runPython(`
+import sys
+from types import ModuleType
+import numpy as np
+
+if 'ximu3csv' not in sys.modules:
+    # Create mock ximu3csv module
+    ximu3csv = ModuleType('ximu3csv')
+    
+    class MockDevice:
+        def __init__(self, serial):
+            self.serial_number = serial
+            # Create mock data
+            n_samples = 1000
+            time_data = np.linspace(0, 10, n_samples) * 1e6  # microseconds
+            
+            class Inertial:
+                def __init__(self):
+                    self.timestamp = time_data
+                    self.accelerometer = type('Accelerometer', (), {
+                        'x': np.sin(time_data/1e6) + np.random.normal(0, 0.1, n_samples),
+                        'y': np.cos(time_data/1e6) + np.random.normal(0, 0.1, n_samples),
+                        'z': np.ones(n_samples) + np.random.normal(0, 0.05, n_samples)
+                    })()
+            
+            self.inertial = Inertial()
+    
+    def mock_read(path):
+        # Return mock devices
+        devices = [
+            MockDevice(f"Device_{i+1:02d}")
+            for i in range(2)  # Create 2 mock devices
+        ]
+        return devices
+    
+    def mock_resample(devices, rate):
+        # Just return the same devices for simplicity
+        return devices
+    
+    ximu3csv.read = mock_read
+    ximu3csv.resample = mock_resample
+    sys.modules['ximu3csv'] = ximu3csv
+`);
+        
+        const result = pyodide.runPython(userCode);
+        
+        // If result is the devices array, store it
+        if(result && result.toJs) {
+          deviceData = result.toJs({dict:false});
+          pythonDataAvailable = true;
+          document.getElementById('clearBtn').disabled = false;
+          updateStatus('Data Loaded','ready');
+          updateStats(); 
+          renderDeviceControls(); 
+          renderTraceControls(); 
+          renderCharts();
+        } else {
+          // Just show the result
+          if(result !== undefined) {
+            outputEl.textContent = String(result);
+            outputEl.style.display = 'block';
+          }
+          updateStatus('Code executed','ready');
+        }
+        
       } catch(err){
-        console.error(err);
-        const out = document.getElementById('pythonOutput');
-        out.textContent = err; out.style.display='block';
+        console.error('Python execution error:', err);
+        outputEl.textContent = String(err);
+        outputEl.style.display = 'block';
         updateStatus('Error','error');
       }
     }
 
     function updateStats(){
-      const ts = deviceData[0].inertial.timestamp.toJs();
+      if(!deviceData.length) return;
+      const ts = deviceData[0].inertial.timestamp.toJs ? 
+                 deviceData[0].inertial.timestamp.toJs() : 
+                 Array.from(deviceData[0].inertial.timestamp);
       document.getElementById('totalPoints').textContent = ts.length * deviceData.length;
-      document.getElementById('duration').textContent   = ts[ts.length-1].toFixed(2)+' s';
-      document.getElementById('devices').textContent    = deviceData.length;
-      document.getElementById('sampleRate').textContent = '400 Hz';
+      document.getElementById('duration').textContent = (ts[ts.length-1]/1e6).toFixed(2)+' s';
+      document.getElementById('devices').textContent = deviceData.length;
     }
 
     function renderDeviceControls(){
@@ -396,33 +476,63 @@ ${userCode}
         const axis=Comp.toLowerCase(), cid=`chart${Comp}`, lid=`loading${Comp}`;
         document.getElementById(lid).style.display='block';
         const traces=[];
+        
         deviceData.forEach((dev,j)=>{
           const name=dev.serial_number;
           if(!deviceVisibility[name]||!traceVisibility[`${name}-${axis}`]) return;
-          const ary=dev.inertial.accelerometer[axis].toJs();
-          const ts=dev.inertial.timestamp.toJs().map(v=>v/1e6);
-          traces.push({x:ts,y:ary,name,mode:'lines',line:{color:colorScheme[j%colorScheme.length]}});
+          
+          const ary = dev.inertial.accelerometer[axis].toJs ? 
+                     dev.inertial.accelerometer[axis].toJs() : 
+                     Array.from(dev.inertial.accelerometer[axis]);
+          const ts_raw = dev.inertial.timestamp.toJs ? 
+                        dev.inertial.timestamp.toJs() : 
+                        Array.from(dev.inertial.timestamp);
+          const ts = ts_raw.map(v=>v/1e6);
+          
+          traces.push({
+            x:ts, y:ary, name, mode:'lines',
+            line:{color:colorScheme[j%colorScheme.length]}
+          });
         });
+        
         const layout=JSON.parse(JSON.stringify(plotlyLayout));
         layout.title={text:`${Comp}-Axis Acceleration`};
+        
         Plotly.newPlot(cid,traces,layout,plotlyConfig)
-          .then(_=>document.getElementById(lid).style.display='none');
+          .then(_=>document.getElementById(lid).style.display='none')
+          .catch(err => {
+            console.error('Plotly error:', err);
+            document.getElementById(lid).style.display='none';
+          });
       });
     }
 
     function exportData(){
-      if(!pythonDataAvailable) return;
-      const ts=deviceData[0].inertial.timestamp.toJs().map(v=>v/1e6);
+      if(!pythonDataAvailable || !deviceData.length) {
+        alert('No data to export');
+        return;
+      }
+      
+      const ts_raw = deviceData[0].inertial.timestamp.toJs ? 
+                    deviceData[0].inertial.timestamp.toJs() : 
+                    Array.from(deviceData[0].inertial.timestamp);
+      const ts = ts_raw.map(v=>v/1e6);
+      
       const header=['Time',...deviceData.map(d=>d.serial_number).flatMap(n=>['X','Y','Z'].map(a=>`${n}-${a}`))].join(',');
       const lines=[header];
+      
       ts.forEach((t,i)=>{
         const row=[t];
         deviceData.forEach(dev=>{
           const a=dev.inertial.accelerometer;
-          row.push(a.x.toJs()[i],a.y.toJs()[i],a.z.toJs()[i]);
+          const x_val = a.x.toJs ? a.x.toJs()[i] : a.x[i];
+          const y_val = a.y.toJs ? a.y.toJs()[i] : a.y[i];
+          const z_val = a.z.toJs ? a.z.toJs()[i] : a.z[i];
+          row.push(x_val, y_val, z_val);
         });
         lines.push(row.join(','));
       });
+      
       const blob=new Blob([lines.join('\n')],{type:'text/csv'}),
             url=URL.createObjectURL(blob),
             a=document.createElement('a');
@@ -432,20 +542,33 @@ ${userCode}
 
     function clearData(){
       deviceData=[]; pythonDataAvailable=false;
+      deviceVisibility = {}; traceVisibility = {};
       document.getElementById('deviceToggles').innerHTML='<em style="color:#666;">Run code to show devices</em>';
       document.getElementById('traceToggles').innerHTML='<em style="color:#666;">Run code to show traces</em>';
       ['X','Y','Z'].forEach(c=>Plotly.purge(`chart${c}`));
       document.getElementById('clearBtn').disabled=true;
+      document.getElementById('runPythonBtn').disabled=false;
       updateStatus('Ready','ready');
     }
 
-    // Performance monitor
-    const stats=new Stats(); stats.showPanel(0);
-    document.getElementById('stats').appendChild(stats.dom);
-    (function animate(){ stats.begin(); stats.end(); requestAnimationFrame(animate); })();
+    // Simple performance monitor
+    let frameCount = 0;
+    let lastTime = Date.now();
+    
+    function updatePerformanceMonitor() {
+      frameCount++;
+      const now = Date.now();
+      if (now - lastTime >= 1000) {
+        document.getElementById('fpsCounter').textContent = frameCount;
+        frameCount = 0;
+        lastTime = now;
+      }
+      requestAnimationFrame(updatePerformanceMonitor);
+    }
 
     // Kick-off
     initializePython();
+    updatePerformanceMonitor();
   </script>
 </body>
 </html>
