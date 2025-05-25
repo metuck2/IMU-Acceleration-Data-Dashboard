@@ -5,20 +5,22 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>IMU Acceleration Data Dashboard</title>
 
-  <!-- tiny data-URI favicon to prevent 404 -->
+  <!-- tiny in-line favicon to avoid 404 -->
   <link rel="icon" href="data:;base64,iVBORw0KGgo=" />
 
-  <!-- Pyodide (from unpkg), Plotly, D3, Stats.js -->
+  <!-- Pyodide from unpkg -->
   <script src="https://unpkg.com/pyodide@0.24.1/full/pyodide.js"></script>
+  <!-- Plotly & D3 -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.26.0/plotly.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+  <!-- JSZip for .zip unpacking -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <!-- Stats.js performance monitor -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/stats.js/r17/Stats.min.js"></script>
 
   <style>
-    /* … (same CSS as before) … */
-
     * { margin:0; padding:0; box-sizing:border-box; }
-    body { font-family:Inter, sans-serif; background:#1e3c72; color:#333; min-height:100vh; }
+    body { font-family:Inter,sans-serif; background:#1e3c72; color:#333; min-height:100vh; }
     h1,h3,h4 { margin-bottom:.5em; }
     .main-container { display:grid; grid-template-rows:auto 1fr; min-height:100vh; }
 
@@ -28,9 +30,11 @@
     }
     .header h1 { font-size:2rem; text-shadow:0 2px 6px rgba(0,0,0,0.3); }
     .header p { opacity:.9; }
-    .python-status { position:absolute; top:1em; right:1em; display:flex; align-items:center;
-      background:rgba(255,255,255,0.2); padding:.5em 1em; border-radius:1em; backdrop-filter:blur(8px);
-      border:1px solid rgba(255,255,255,0.3); color:#fff; font-size:.85rem;
+    .python-status {
+      position:absolute; top:1em; right:1em; display:flex; align-items:center;
+      background:rgba(255,255,255,0.2); padding:.5em 1em; border-radius:1em;
+      backdrop-filter:blur(8px); border:1px solid rgba(255,255,255,0.3);
+      color:#fff; font-size:.85rem;
     }
     .status-indicator {
       width:10px; height:10px; border-radius:50%;
@@ -50,8 +54,7 @@
     .python-section { margin-bottom:2em; }
     .code-editor { background:#1e1e1e; border-radius:.5em; overflow:hidden; }
     .code-editor textarea {
-      width:100%; height:180px; padding:1em;
-      background:transparent; border:none; outline:none;
+      width:100%; height:180px; padding:1em; background:transparent; border:none; outline:none;
       color:#d4d4d4; font-family:monospace; font-size:0.9em;
     }
     .run-python-btn {
@@ -70,17 +73,17 @@
     .stat-value { font-size:1.5rem; font-weight:700; }
     .stat-label { opacity:.8; font-size:.85rem; }
 
-    .device-toggle, .trace-item {
+    .device-toggle,.trace-item {
       display:flex; align-items:center; padding:.5em; margin-bottom:.5em;
       border-radius:.5em; cursor:pointer; transition:background .2s,transform .2s;
     }
-    .device-toggle:hover, .trace-item:hover { background:rgba(0,0,0,0.05); transform:translateY(-2px); }
-    .device-checkbox, .trace-checkbox { margin-right:.75em; }
-    .color-dot, .trace-color {
+    .device-toggle:hover,.trace-item:hover { background:rgba(0,0,0,0.05); transform:translateY(-2px); }
+    .device-checkbox,.trace-checkbox { margin-right:.75em; }
+    .color-dot,.trace-color {
       width:16px; height:16px; border-radius:50%; margin-right:.75em;
       border:2px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,0.2);
     }
-    .device-name, .trace-name { font-weight:500; }
+    .device-name,.trace-name { font-weight:500; }
 
     .chart-container {
       background:#fff; border-radius:1em; padding:1.5em;
@@ -127,7 +130,7 @@
         <span id="statusText">Initializing Python…</span>
       </div>
       <h1>🐍 IMU Dashboard</h1>
-      <p>Run your IMU-resampling code directly in the browser.</p>
+      <p>Upload your data zip, then run your Python code.</p>
     </header>
 
     <div class="dashboard">
@@ -136,79 +139,77 @@
         <section class="python-section">
           <h3>🐍 Python Code Editor</h3>
 
-          <!-- Folder Upload -->
+          <!-- ZIP Upload -->
           <div style="margin-bottom:1em;">
-            <label for="dataUpload">📂 Upload IMU “Data” Folder:</label><br/>
-            <input type="file" id="dataUpload" webkitdirectory directory multiple disabled style="margin-top:.5em;" />
+            <label for="zipUpload">📦 Upload IMU Data Zip:</label><br/>
+            <input type="file" id="zipUpload" accept=".zip" />
           </div>
 
           <!-- Code Editor -->
           <div class="code-editor">
             <textarea id="pythonCode">
-import numpy as np
-import matplotlib.pyplot as plt
+# Example:
+import ximu3csv
 
-def generate_imu_data():
-    t = np.linspace(0,10,4000)
-    data = {
-      'timestamp':t.tolist(),
-      'accelerometer':{
-        'x': (0.8*np.sin(2*np.pi*2*t)+0.1*np.random.randn(4000)).tolist(),
-        'y': (0.6*np.cos(2*np.pi*2.5*t)+0.1*np.random.randn(4000)).tolist(),
-        'z': (1.0+0.4*np.sin(2*np.pi*1.5*t)+0.1*np.random.randn(4000)).tolist()
-      }
-    }
-    from types import SimpleNamespace
-    def make_dev(name):
-        return SimpleNamespace(
-          serial_number=name,
-          inertial=SimpleNamespace(
-            timestamp=(np.array(data['timestamp'])*1e6),
-            accelerometer=SimpleNamespace(
-              x=np.array(data['accelerometer']['x']),
-              y=np.array(data['accelerometer']['y']),
-              z=np.array(data['accelerometer']['z'])
-            )
-          )
-        )
-    return [ make_dev("IMU-Alpha"), make_dev("IMU-Beta") ]
-
-devices = generate_imu_data()
+# This will now read your uploaded CSVs under /Data
+devices = ximu3csv.read("Data")
+devices = ximu3csv.resample(devices, 400)
 devices
             </textarea>
           </div>
 
-          <button class="run-python-btn" id="runPythonBtn" onclick="runPythonCode()">▶️ Run Python Code</button>
-          <pre id="pythonOutput" style="display:none;background:#222;color:#f66;padding:1em;border-radius:.5em;margin-top:.5em;"></pre>
+          <button class="run-python-btn" id="runPythonBtn" onclick="runPythonCode()" disabled>
+            ▶️ Run Python Code
+          </button>
+          <pre id="pythonOutput" style="display:none;background:#222;color:#f66;
+               padding:1em;border-radius:.5em;margin-top:.5em;"></pre>
         </section>
 
         <!-- Data Statistics -->
         <section class="control-panel">
           <h3>📊 Data Statistics</h3>
           <div class="stats-grid">
-            <div class="stat-card"><div class="stat-value" id="totalPoints">0</div><div class="stat-label">Data Points</div></div>
-            <div class="stat-card"><div class="stat-value" id="duration">0 s</div>   <div class="stat-label">Duration</div></div>
-            <div class="stat-card"><div class="stat-value" id="devices">0</div>     <div class="stat-label">Devices</div></div>
-            <div class="stat-card"><div class="stat-value" id="sampleRate">400 Hz</div><div class="stat-label">Sample Rate</div></div>
+            <div class="stat-card">
+              <div class="stat-value" id="totalPoints">0</div>
+              <div class="stat-label">Data Points</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="duration">0 s</div>
+              <div class="stat-label">Duration</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="devices">0</div>
+              <div class="stat-label">Devices</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="sampleRate">400 Hz</div>
+              <div class="stat-label">Sample Rate</div>
+            </div>
           </div>
         </section>
 
         <!-- Device Toggles -->
         <section class="device-controls">
           <h3>🎛️ Device Controls</h3>
-          <div id="deviceToggles"><em style="color:#666;">Run code to show devices</em></div>
+          <div id="deviceToggles">
+            <em style="color:#666;">Run code to show devices</em>
+          </div>
         </section>
 
         <!-- Trace Toggles -->
         <section class="trace-controls">
           <h4>📈 Trace Controls</h4>
-          <div id="traceToggles"><em style="color:#666;">Run code to show traces</em></div>
+          <div id="traceToggles">
+            <em style="color:#666;">Run code to show traces</em>
+          </div>
         </section>
 
         <!-- Export & Clear -->
         <div class="action-buttons">
           <button class="btn btn-success" onclick="exportData()">💾 Export CSV</button>
-          <button class="btn btn-secondary" id="clearBtn" onclick="clearData()" disabled>🗑️ Clear Data</button>
+          <button class="btn btn-secondary" id="clearBtn" onclick="clearData()" disabled>
+            🗑️ Clear Data
+          </button>
         </div>
       </aside>
 
@@ -237,54 +238,53 @@ devices
   <div id="stats" style="position:fixed;top:10px;left:10px;z-index:10000;"></div>
 
   <script>
-    // ── GLOBALS ───────────────────────────────────────────────────────────
-    let pyodide=null, deviceData=[], deviceVisibility={}, traceVisibility={}, pythonDataAvailable=false;
-    const colorScheme=['#667eea','#764ba2','#f39c12','#e74c3c','#2ecc71','#e67e22'];
-    const plotlyConfig={responsive:true,displayModeBar:true,modeBarButtonsToRemove:['pan2d','select2d','lasso2d','autoScale2d'],displaylogo:false,toImageButtonOptions:{format:'png',filename:'imu_data',height:500,width:1000,scale:2}};
-    const plotlyLayout={margin:{l:50,r:30,t:40,b:50},xaxis:{title:'Time (s)',gridcolor:'rgba(0,0,0,0.1)',zeroline:false},yaxis:{title:"G's",gridcolor:'rgba(0,0,0,0.1)',zeroline:true,zerolinecolor:'rgba(0,0,0,0.3)'},plot_bgcolor:'rgba(0,0,0,0)',paper_bgcolor:'rgba(0,0,0,0)',font:{family:'Inter, sans-serif',size:12,color:'#2c3e50'},hovermode:'x unified',legend:{orientation:'v',x:1.02,y:1,xanchor:'left',bgcolor:'rgba(255,255,255,0.8)',bordercolor:'rgba(0,0,0,0.1)',borderwidth:1}};
+    let pyodide = null,
+        deviceData = [],
+        deviceVisibility = {},
+        traceVisibility = {},
+        pythonDataAvailable = false;
+
+    const colorScheme = ['#667eea','#764ba2','#f39c12','#e74c3c','#2ecc71','#e67e22'];
+    const plotlyConfig = {
+      responsive:true,
+      displayModeBar:true,
+      modeBarButtonsToRemove:['pan2d','select2d','lasso2d','autoScale2d'],
+      displaylogo:false,
+      toImageButtonOptions:{format:'png',filename:'imu_data',height:500,width:1000,scale:2}
+    };
+    const plotlyLayout = {
+      margin:{l:50,r:30,t:40,b:50},
+      xaxis:{title:'Time (s)',gridcolor:'rgba(0,0,0,0.1)',zeroline:false},
+      yaxis:{title:"G's",gridcolor:'rgba(0,0,0,0.1)',zeroline:true,zerolinecolor:'rgba(0,0,0,0.3)'},
+      plot_bgcolor:'rgba(0,0,0,0)',paper_bgcolor:'rgba(0,0,0,0)',
+      font:{family:'Inter, sans-serif',size:12,color:'#2c3e50'},
+      hovermode:'x unified',
+      legend:{
+        orientation:'v',x:1.02,y:1,xanchor:'left',
+        bgcolor:'rgba(255,255,255,0.8)',bordercolor:'rgba(0,0,0,0.1)',borderwidth:1
+      }
+    };
 
     function updateStatus(text,type='loading'){
-      const txt=document.getElementById('statusText'), ind=document.getElementById('statusIndicator');
-      txt.textContent=text; ind.classList.remove('ready','error');
+      const txt = document.getElementById('statusText'),
+            ind = document.getElementById('statusIndicator');
+      txt.textContent = text;
+      ind.classList.remove('ready','error');
       if(type==='ready') ind.classList.add('ready');
       if(type==='error') ind.classList.add('error');
     }
 
-    // Initialize Pyodide and mock ximu3csv
     async function initializePython(){
       try {
-        pyodide=await loadPyodide({indexURL:'https://unpkg.com/pyodide@0.24.1/full/'});
+        pyodide = await loadPyodide({indexURL:'https://unpkg.com/pyodide@0.24.1/full/'});
         updateStatus('Installing packages…');
         await pyodide.loadPackage(['numpy']);
+        // NOTE: remove or replace this mock if you have real ximu3csv in Pyodide
         pyodide.runPython(`
 import sys
-from types import ModuleType, SimpleNamespace
-import numpy as np
-ximu3csv=ModuleType('ximu3csv')
-def mock_read(path):
-    t=np.linspace(0,10,4000)
-    data={'timestamp':t.tolist(),'accelerometer':{
-        'x':(0.8*np.sin(2*np.pi*2*t)+0.1*np.random.randn(4000)).tolist(),
-        'y':(0.6*np.cos(2*np.pi*2.5*t)+0.1*np.random.randn(4000)).tolist(),
-        'z':(1.0+0.4*np.sin(2*np.pi*1.5*t)+0.1*np.random.randn(4000)).tolist()}}
-    def make_dev(name):
-        return SimpleNamespace(
-            serial_number=name,
-            inertial=SimpleNamespace(
-                timestamp=(np.array(data['timestamp'])*1e6),
-                accelerometer=SimpleNamespace(
-                    x=np.array(data['accelerometer']['x']),
-                    y=np.array(data['accelerometer']['y']),
-                    z=np.array(data['accelerometer']['z'])
-                )
-            )
-        )
-    return [make_dev("IMU-Alpha"),make_dev("IMU-Beta")]
-def mock_resample(devices,rate): return devices
-ximu3csv.read=mock_read; ximu3csv.resample=mock_resample
-sys.modules['ximu3csv']=ximu3csv
-        `);
-        document.getElementById('dataUpload').disabled=false;
+from types import ModuleType
+# no mock here so your real ximu3csv gets used if available
+`);
         updateStatus('Python Ready','ready');
       } catch(e){
         console.error(e);
@@ -294,7 +294,7 @@ sys.modules['ximu3csv']=ximu3csv
       }
     }
 
-    // Helpers to make directories
+    // filesystem helper
     function mkdirTree(path){
       let parts=path.split('/'), curr='';
       for(let p of parts){
@@ -303,54 +303,64 @@ sys.modules['ximu3csv']=ximu3csv
       }
     }
 
-    // Handle folder upload
-    document.getElementById('dataUpload').addEventListener('change', async evt=>{
-      if(!pyodide) return alert("Python not ready");
-      const files=evt.target.files;
+    // ZIP upload handler
+    document.getElementById('zipUpload').addEventListener('change', async evt=>{
+      const file = evt.target.files[0];
+      if(!file) return;
+      const data = await file.arrayBuffer();
+      const zip = await JSZip.loadAsync(data);
+
+      // create /Data
       try{ pyodide.FS.mkdir('/Data'); }catch{}
-      for(let file of files){
-        const rel=file.webkitRelativePath, full='/'+rel, dir=full.substring(0,full.lastIndexOf('/'));
+
+      let count=0;
+      await Promise.all(Object.keys(zip.files).map(async name=>{
+        const entry = zip.files[name];
+        if(entry.dir) return;
+        const content = await entry.async('uint8array');
+        const fsPath = '/Data/' + name;
+        const dir = fsPath.substring(0, fsPath.lastIndexOf('/'));
         mkdirTree(dir);
-        const buf=await file.arrayBuffer();
-        pyodide.FS.writeFile(full,new Uint8Array(buf));
-      }
-      alert(`✅ Uploaded ${files.length} files into /Data/`);
+        pyodide.FS.writeFile(fsPath, content);
+        count++;
+      }));
+
+      alert(`✅ Extracted ${count} files into /Data/`);
+      document.getElementById('runPythonBtn').disabled = false;
     });
 
-    // Run user code
     function runPythonCode(){
       updateStatus('Running code…');
       try {
-        const userCode=document.getElementById('pythonCode').value;
+        const userCode = document.getElementById('pythonCode').value;
         const full = `
 import ximu3csv
-devices = ximu3csv.resample(ximu3csv.read("Data"),400)
+devices = ximu3csv.read("Data")
+devices = ximu3csv.resample(devices, 400)
 ${userCode}
 `;
-        const pyVal=pyodide.runPython(full);
-        deviceData=pyVal.toJs({dict:false});
-        pythonDataAvailable=true;
-        document.getElementById('clearBtn').disabled=false;
+        const pyVal = pyodide.runPython(full);
+        deviceData = pyVal.toJs({dict:false});
+        pythonDataAvailable = true;
+        document.getElementById('clearBtn').disabled = false;
         updateStatus('Data Loaded','ready');
         updateStats(); renderDeviceControls(); renderTraceControls(); renderCharts();
       } catch(err){
         console.error(err);
-        const out=document.getElementById('pythonOutput');
-        out.textContent=err; out.style.display='block';
+        const out = document.getElementById('pythonOutput');
+        out.textContent = err; out.style.display='block';
         updateStatus('Error','error');
       }
     }
 
-    // Update sidebar stats
     function updateStats(){
-      const ts=deviceData[0].inertial.timestamp.toJs();
-      document.getElementById('totalPoints').textContent=ts.length*deviceData.length;
-      document.getElementById('duration').textContent=ts[ts.length-1].toFixed(2)+' s';
-      document.getElementById('devices').textContent=deviceData.length;
-      document.getElementById('sampleRate').textContent='400 Hz';
+      const ts = deviceData[0].inertial.timestamp.toJs();
+      document.getElementById('totalPoints').textContent = ts.length * deviceData.length;
+      document.getElementById('duration').textContent   = ts[ts.length-1].toFixed(2)+' s';
+      document.getElementById('devices').textContent    = deviceData.length;
+      document.getElementById('sampleRate').textContent = '400 Hz';
     }
 
-    // Render device toggles
     function renderDeviceControls(){
       const c=document.getElementById('deviceToggles'); c.innerHTML='';
       deviceData.forEach((dev,i)=>{
@@ -365,12 +375,11 @@ ${userCode}
       });
     }
 
-    // Render trace toggles
     function renderTraceControls(){
       const c=document.getElementById('traceToggles'); c.innerHTML='';
       ['x','y','z'].forEach(axis=>{
         deviceData.forEach((dev,i)=>{
-          const name=dev.serial_number, key=`${name}-${axis}`;
+          const name=dev.serial_number; const key=`${name}-${axis}`;
           if(traceVisibility[key]===undefined) traceVisibility[key]=true;
           const div=document.createElement('div'); div.className='trace-item';
           const cb=document.createElement('input'); cb.type='checkbox'; cb.checked=traceVisibility[key]; cb.className='trace-checkbox';
@@ -382,7 +391,6 @@ ${userCode}
       });
     }
 
-    // Render Plotly charts
     function renderCharts(){
       ['X','Y','Z'].forEach((Comp,i)=>{
         const axis=Comp.toLowerCase(), cid=`chart${Comp}`, lid=`loading${Comp}`;
@@ -402,7 +410,6 @@ ${userCode}
       });
     }
 
-    // Export CSV
     function exportData(){
       if(!pythonDataAvailable) return;
       const ts=deviceData[0].inertial.timestamp.toJs().map(v=>v/1e6);
@@ -423,22 +430,21 @@ ${userCode}
       URL.revokeObjectURL(url);
     }
 
-    // Clear dashboard
     function clearData(){
       deviceData=[]; pythonDataAvailable=false;
       document.getElementById('deviceToggles').innerHTML='<em style="color:#666;">Run code to show devices</em>';
-      document.getElementById('traceToggles').innerHTML ='<em style="color:#666;">Run code to show traces</em>';
+      document.getElementById('traceToggles').innerHTML='<em style="color:#666;">Run code to show traces</em>';
       ['X','Y','Z'].forEach(c=>Plotly.purge(`chart${c}`));
       document.getElementById('clearBtn').disabled=true;
       updateStatus('Ready','ready');
     }
 
-    // Stats.js performance monitor
+    // Performance monitor
     const stats=new Stats(); stats.showPanel(0);
     document.getElementById('stats').appendChild(stats.dom);
-    ;(function animate(){ stats.begin(); stats.end(); requestAnimationFrame(animate); })();
+    (function animate(){ stats.begin(); stats.end(); requestAnimationFrame(animate); })();
 
-    // Kick things off
+    // Kick-off
     initializePython();
   </script>
 </body>
