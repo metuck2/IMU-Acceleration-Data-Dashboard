@@ -7,254 +7,258 @@
 
   <!-- Plotly & D3 -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.26.0/plotly.min.js"></script>
-  <!-- D3 for color scales if needed -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
-  <!-- JSZip for .zip unpacking -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-  <!-- PapaParse for CSV parsing -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
 
   <style>
     * { margin:0; padding:0; box-sizing:border-box; }
-    body { font-family:Inter,sans-serif; background:#1e3c72; color:#333; min-height:100vh; }
-    h1,h3,h4 { margin-bottom:.5em; }
+    body { font-family:Inter,sans-serif; background:#1e3c72; color:#333; }
     .main-container { display:grid; grid-template-rows:auto 1fr; min-height:100vh; }
-
-    .header {
-      background:linear-gradient(135deg,#667eea,#764ba2);
-      padding:2em; text-align:center; color:#fff;
-    }
-    .header h1 { font-size:2rem; text-shadow:0 2px 6px rgba(0,0,0,0.3); }
-    .header p { opacity:.9; }
-
-    .dashboard { display:grid; grid-template-columns:350px 1fr; background:#f5f7fa; }
-    .sidebar {
-      background:rgba(255,255,255,0.95); padding:2em;
-      border-right:1px solid rgba(0,0,0,0.1); overflow-y:auto;
-    }
-    .charts-area { padding:2em; display:grid; grid-template-rows:1fr 1fr 1fr; gap:1.5em; }
-
-    .stat-grid { display:grid; grid-template-columns:1fr 1fr; gap:1em; margin-bottom:2em; }
-    .stat-card {
-      background:rgba(255,255,255,0.8); padding:1em; border-radius:.5em;
-      text-align:center; backdrop-filter:blur(8px); border:1px solid rgba(0,0,0,0.1);
-    }
+    .header { background:linear-gradient(135deg,#667eea,#764ba2); padding:2em; text-align:center; color:#fff; }
+    .header h1 { font-size:2rem; }
+    .dashboard { padding:2em; background:#f5f7fa; }
+    .stats { display:flex; gap:2em; flex-wrap:wrap; margin-bottom:2em; }
+    .stat-card { background:rgba(255,255,255,0.8); width:150px; padding:1em; border-radius:.5em; text-align:center; }
     .stat-value { font-size:1.5rem; font-weight:700; }
     .stat-label { opacity:.8; font-size:.85rem; }
-
-    .device-toggle,.trace-item {
-      display:flex; align-items:center; padding:.5em; margin-bottom:.5em;
-      border-radius:.5em; cursor:pointer; transition:background .2s,transform .2s;
-    }
-    .device-toggle:hover,.trace-item:hover { background:rgba(0,0,0,0.05); transform:translateY(-2px); }
-    .device-checkbox,.trace-checkbox { margin-right:.75em; }
-    .color-dot,.trace-color {
-      width:16px; height:16px; border-radius:50%; margin-right:.75em;
-      border:2px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,0.2);
-    }
-    .device-name,.trace-name { font-weight:500; }
-
-    .chart-container {
-      background:#fff; border-radius:1em; padding:1.5em;
-      box-shadow:0 8px 20px rgba(0,0,0,0.1); position:relative;
-    }
+    .chart-container { background:#fff; border-radius:1em; padding:1.5em; margin-bottom:2em; position:relative; }
     .chart-title { font-size:1.2rem; margin-bottom:1em; text-align:center; }
-    .chart { width:100%; height:200px; }
-    .loading-spinner {
-      position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+    .chart { width:100%; height:350px; }
+    .loading-spinner { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
       width:40px; height:40px; border:4px solid #f3f3f3; border-top:4px solid #667eea;
-      border-radius:50%; animation:spin 1s linear infinite; display:none;
-    }
+      border-radius:50%; animation:spin 1s linear infinite; display:none; }
     @keyframes spin { to{transform:rotate(360deg);} }
-
-    .action-buttons { display:flex; flex-direction:column; gap:.75em; margin-top:1.5em; }
-    .btn { padding:.75em; border:none; border-radius:.5em; font-weight:600; cursor:pointer; }
+    .trace-controls { display:flex; flex-wrap:wrap; gap:1em; margin-top:1em; }
+    .trace-item { display:flex; align-items:center; }
+    .trace-checkbox { margin-right:.5em; }
+    .trace-color { width:12px; height:12px; border-radius:50%; margin-right:.5em; }
+    .trace-name { font-size:.9rem; }
+    .action-buttons { display:flex; gap:1em; margin-top:1.5em; }
+    .btn { padding:.75em 1em; border:none; border-radius:.5em; font-weight:600; cursor:pointer; }
     .btn-success { background:linear-gradient(135deg,#56ab2f,#a8e6cf); color:#fff; }
     .btn-secondary { background:linear-gradient(135deg,#6c757d,#495057); color:#fff; }
     .btn-secondary:disabled { background:#ccc; cursor:not-allowed; }
-
-    @media(max-width:1024px){
-      .dashboard { grid-template-columns:1fr; }
-      .charts-area { grid-template-rows:repeat(3,180px); }
-    }
   </style>
 </head>
-
 <body>
   <div class="main-container">
     <header class="header">
       <h1>IMU Acceleration Dashboard</h1>
       <p>Upload your data zip to visualize accelerometer traces.</p>
     </header>
-
     <div class="dashboard">
-      <aside class="sidebar">
-        <!-- ZIP Upload -->
-        <section>
-          <h3>📦 Data Upload</h3>
-          <input type="file" id="zipUpload" accept=".zip" />
-        </section>
+      <section class="upload">
+        <label>📦 Data Upload <input type="file" id="zipUpload" accept=".zip" style="margin-left:.5em;" /></label>
+        <br><br>
+        <label><input type="checkbox" id="autoZoom" checked> Auto-zoom to active periods (high acceleration)</label>
+      </section>
+      <section class="stats">
+        <div class="stat-card"><div class="stat-value" id="totalPoints">0</div><div class="stat-label">Data Points</div></div>
+        <div class="stat-card"><div class="stat-value" id="duration">0 s</div><div class="stat-label">Duration</div></div>
+        <div class="stat-card"><div class="stat-value" id="devices">0</div><div class="stat-label">Devices</div></div>
+        <div class="stat-card"><div class="stat-value" id="sampleRate">-- Hz</div><div class="stat-label">Sample Rate</div></div>
+      </section>
 
-        <!-- Data Statistics -->
-        <section class="stat-grid">
-          <div class="stat-card"><div class="stat-value" id="totalPoints">0</div><div class="stat-label">Data Points</div></div>
-          <div class="stat-card"><div class="stat-value" id="duration">0 s</div><div class="stat-label">Duration</div></div>
-          <div class="stat-card"><div class="stat-value" id="devices">0</div><div class="stat-label">Devices</div></div>
-          <div class="stat-card"><div class="stat-value" id="sampleRate">-- Hz</div><div class="stat-label">Sample Rate</div></div>
-        </section>
-
-        <!-- Device Toggles -->
-        <section>
-          <h3>🎛️ Device Controls</h3>
-          <div id="deviceToggles"><em style="color:#666;">Upload data to show devices</em></div>
-        </section>
-
-        <!-- Trace Toggles -->
-        <section>
-          <h4>📈 Trace Controls</h4>
-          <div id="traceToggles"><em style="color:#666;">Upload data to show traces</em></div>
-        </section>
-
-        <!-- Export & Clear -->
-        <div class="action-buttons">
-          <button class="btn btn-success" id="exportBtn" onclick="exportData()" disabled>💾 Export CSV</button>
-          <button class="btn btn-secondary" id="clearBtn" onclick="clearData()" disabled>🗑️ Clear Data</button>
-        </div>
-      </aside>
-
-      <!-- Charts Area -->
-      <div class="charts-area">
-        <div class="chart-container"><div class="chart-title">X-Axis Acceleration</div><div id="chartX" class="chart"></div><div id="loadingX" class="loading-spinner"></div></div>
-        <div class="chart-container"><div class="chart-title">Y-Axis Acceleration</div><div id="chartY" class="chart"></div><div id="loadingY" class="loading-spinner"></div></div>
-        <div class="chart-container"><div class="chart-title">Z-Axis Acceleration</div><div id="chartZ" class="chart"></div><div id="loadingZ" class="loading-spinner"></div></div>
+      <!-- Chart X -->
+      <div class="chart-container">
+        <div class="chart-title">X-Axis Acceleration</div>
+        <div id="chartX" class="chart"></div>
+        <div id="loadingX" class="loading-spinner"></div>
+        <div id="traceControlsX" class="trace-controls"><em style="color:#666;">Loading controls…</em></div>
       </div>
+
+      <!-- Chart Y -->
+      <div class="chart-container">
+        <div class="chart-title">Y-Axis Acceleration</div>
+        <div id="chartY" class="chart"></div>
+        <div id="loadingY" class="loading-spinner"></div>
+        <div id="traceControlsY" class="trace-controls"><em style="color:#666;">Loading controls…</em></div>
+      </div>
+
+      <!-- Chart Z -->
+      <div class="chart-container">
+        <div class="chart-title">Z-Axis Acceleration</div>
+        <div id="chartZ" class="chart"></div>
+        <div id="loadingZ" class="loading-spinner"></div>
+        <div id="traceControlsZ" class="trace-controls"><em style="color:#666;">Loading controls…</em></div>
+      </div>
+
+      <section class="action-buttons">
+        <button class="btn btn-success" id="exportBtn" onclick="exportData()" disabled>💾 Export CSV</button>
+        <button class="btn btn-secondary" id="clearBtn" onclick="clearData()" disabled>🗑️ Clear Data</button>
+      </section>
     </div>
   </div>
 
   <script>
-    let deviceData = [], deviceVisibility = {}, traceVisibility = {}, dataLoaded = false;
-    const colorScheme = d3.schemeCategory10;
-    const plotlyConfig = {responsive:true, displayModeBar:true};
-    const plotlyLayoutBase = {
-      margin:{l:50,r:30,t:40,b:50}, xaxis:{title:'Time (s)'}, yaxis:{title:"G's"}, hovermode:'x unified'
-    };
+    let deviceData=[]; let traceVisibility={}; let dataLoaded=false;
+    const colorScheme=d3.schemeCategory10;
+    const plotlyConfig={responsive:true,displayModeBar:true};
+    const plotlyLayoutBase={margin:{l:50,r:30,t:40,b:50},xaxis:{title:'Time (s)'},yaxis:{title:"G's"},hovermode:'x unified'};
 
-    document.getElementById('zipUpload').addEventListener('change', async evt => {
-      const file = evt.target.files[0]; if(!file) return;
-      const data = await file.arrayBuffer();
-      const zip = await JSZip.loadAsync(data);
-      const folders = new Set();
-      Object.keys(zip.files).forEach(name => {
-        const parts = name.split('/'); if(parts.length>1) folders.add(parts[0]);
-      });
+    document.getElementById('zipUpload').addEventListener('change',async(evt)=>{
+      const file=evt.target.files[0]; if(!file) return;
+      const data=await file.arrayBuffer(),zip=await JSZip.loadAsync(data);
+      const folders = [...new Set(Object.keys(zip.files).map(n => n.split('/')[0]))];
+        
+        // Parse and collect raw data for each device
+        const rawData = [];
+        for (const f of folders) {
+          const fileObj = zip.file(`${f}/Inertial.csv`);
+          if (!fileObj) continue;
+          const txt = await fileObj.async('string');
+          const parsed = Papa.parse(txt, { header: true, dynamicTyping: true });
+          const rows = parsed.data;
+          const rawTimes = rows.map(r => r['Timestamp (us)'] / 1e6);
+          rawData.push({ serial: f, rows, rawTimes });
+        }
 
-      deviceData = [];
-      for(const folder of folders){
-        const csvFile = zip.file(folder + '/Inertial.csv');
-        if(!csvFile) continue;
-        const text = await csvFile.async('string');
-        const parsed = Papa.parse(text, {header:true, dynamicTyping:true});
-        const rows = parsed.data;
-        const times = rows.map(r => r.timestamp/1e6);
-        const xs = rows.map(r => r.accel_x);
-        const ys = rows.map(r => r.accel_y);
-        const zs = rows.map(r => r.accel_z);
-        deviceData.push({ serial: folder, inertial:{ timestamp: times, x: xs, y: ys, z: zs }});
-      }
+        // Build deviceData with original timestamps (no normalization)
+        deviceData = rawData.map(d => ({
+          serial: d.serial,
+          inertial: {
+            timestamp: d.rawTimes,
+            x: d.rows.map(r => r['Accelerometer X (g)']),
+            y: d.rows.map(r => r['Accelerometer Y (g)']),
+            z: d.rows.map(r => r['Accelerometer Z (g)']),
+          }
+        }));
 
-      if(deviceData.length){
-        dataLoaded = true; document.getElementById('exportBtn').disabled = false;
-        document.getElementById('clearBtn').disabled = false;
-        updateStats(); renderDeviceControls(); renderTraceControls(); renderCharts();
-      }
+        if (!deviceData.length) return;
+      dataLoaded=true;document.getElementById('exportBtn').disabled=false;document.getElementById('clearBtn').disabled=false;
+      updateStats();         renderPerChartControls(); renderCharts();
+        
+        // Add event listener for auto-zoom checkbox
+        document.getElementById('autoZoom').addEventListener('change', renderCharts);
     });
 
     function updateStats(){
-      const devs = deviceData.length;
-      const pts = devs * deviceData[0].inertial.timestamp.length;
-      const dur = deviceData[0].inertial.timestamp.slice(-1).toFixed(2);
-      document.getElementById('totalPoints').textContent = pts;
-      document.getElementById('duration').textContent = dur + ' s';
-      document.getElementById('devices').textContent = devs;
-      document.getElementById('sampleRate').textContent = Math.round(pts/dur) + ' Hz';
+      const devs=deviceData.length,pts=deviceData.reduce((s,d)=>s+d.inertial.timestamp.length,0);
+      const durArr=deviceData.map(d=>Math.max(...d.inertial.timestamp)-Math.min(...d.inertial.timestamp));
+      const dur=durArr.length?Math.max(...durArr):0, sr=dur?Math.round(deviceData[0].inertial.timestamp.length/dur):0;
+      document.getElementById('totalPoints').textContent=pts;
+      document.getElementById('duration').textContent=`${dur.toFixed(2)} s`;
+      document.getElementById('devices').textContent=devs;
+      document.getElementById('sampleRate').textContent=`${sr} Hz`;
     }
 
-    function renderDeviceControls(){
-      const container = document.getElementById('deviceToggles'); container.innerHTML='';
-      deviceData.forEach((dev,i)=>{
-        deviceVisibility[dev.serial] = true;
-        const div = document.createElement('div'); div.className='device-toggle';
-        const cb = document.createElement('input'); cb.type='checkbox'; cb.checked=true; cb.className='device-checkbox';
-        cb.onchange = ()=>{ deviceVisibility[dev.serial]=cb.checked; renderCharts(); renderTraceControls(); };
-        const dot = document.createElement('div'); dot.className='color-dot'; dot.style.background=colorScheme[i%colorScheme.length];
-        const lbl = document.createElement('div'); lbl.className='device-name'; lbl.textContent = dev.serial;
-        div.append(cb,dot,lbl); container.append(div);
-      });
-    }
-
-    function renderTraceControls(){
-      const container = document.getElementById('traceToggles'); container.innerHTML='';
-      ['x','y','z'].forEach(axis=>{
-        deviceData.forEach((dev,i)=>{
-          const key = dev.serial+'-'+axis;
-          if(traceVisibility[key]===undefined) traceVisibility[key] = true;
-          const div = document.createElement('div'); div.className='trace-item';
-          const cb = document.createElement('input'); cb.type='checkbox'; cb.checked=traceVisibility[key]; cb.className='trace-checkbox';
-          cb.onchange = ()=>{ traceVisibility[key]=cb.checked; renderCharts(); };
-          const dot = document.createElement('div'); dot.className='trace-color'; dot.style.background=colorScheme[i%colorScheme.length];
-          const lbl = document.createElement('div'); lbl.className='trace-name'; lbl.textContent = dev.serial+'/'+axis.toUpperCase();
-          div.append(cb,dot,lbl); container.append(div);
+    function renderPerChartControls(){
+      ['X','Y','Z'].forEach(axis=>{
+        const ctr=document.getElementById(`traceControls${axis}`); ctr.innerHTML='';
+        deviceData.forEach((d,i)=>{
+          const key=`${d.serial}-${axis}`; if(traceVisibility[key]===undefined) traceVisibility[key]=true;
+          const div=document.createElement('div');div.className='trace-item';
+          const cb=document.createElement('input');cb.type='checkbox';cb.checked=traceVisibility[key];cb.className='trace-checkbox';
+          cb.onchange=()=>{traceVisibility[key]=cb.checked; renderCharts();};
+          const dot=document.createElement('div');dot.className='trace-color';dot.style.background=colorScheme[i%colorScheme.length];
+          const lbl=document.createElement('div');lbl.className='trace-name';lbl.textContent=`${d.serial}/${axis}`;
+          div.append(cb,dot,lbl);ctr.append(div);
         });
       });
+    }
+
+    function findActivePeriods() {
+      // Find periods with significant acceleration activity
+      let allActiveTimes = [];
+      
+      deviceData.forEach(device => {
+        const timestamps = device.inertial.timestamp;
+        const x = device.inertial.x;
+        const y = device.inertial.y;
+        const z = device.inertial.z;
+        
+        // Calculate magnitude of acceleration
+        for (let i = 0; i < timestamps.length; i++) {
+          const magnitude = Math.sqrt(x[i]*x[i] + y[i]*y[i] + z[i]*z[i]);
+          // If magnitude is significantly different from 1g (gravity), it's "active"
+          if (Math.abs(magnitude - 1.0) > 0.3) { // threshold for "activity"
+            allActiveTimes.push(timestamps[i]);
+          }
+        }
+      });
+      
+      if (allActiveTimes.length === 0) return null;
+      
+      const minActive = Math.min(...allActiveTimes);
+      const maxActive = Math.max(...allActiveTimes);
+      
+      // Add some padding around the active period
+      const padding = (maxActive - minActive) * 0.1;
+      return {
+        min: Math.max(0, minActive - padding),
+        max: maxActive + padding
+      };
     }
 
     function renderCharts(){
-      ['X','Y','Z'].forEach((axis,i)=>{
-        const idChar = axis.toLowerCase();
-        document.getElementById('loading'+axis).style.display='block';
-        const traces = [];
-        deviceData.forEach((dev,j)=>{
-          if(!deviceVisibility[dev.serial]||!traceVisibility[dev.serial+'-'+idChar]) return;
-          traces.push({
-            x: dev.inertial.timestamp,
-            y: dev.inertial[idChar],
-            name: dev.serial,
-            mode: 'lines',
-            line: {color: colorScheme[j%colorScheme.length]}
+      // Calculate time range
+      let globalXMin = Infinity, globalXMax = -Infinity;
+      
+      deviceData.forEach(d => {
+        if (d.inertial.timestamp && d.inertial.timestamp.length > 0) {
+          const deviceMin = Math.min(...d.inertial.timestamp);
+          const deviceMax = Math.max(...d.inertial.timestamp);
+          if (deviceMin < globalXMin) globalXMin = deviceMin;
+          if (deviceMax > globalXMax) globalXMax = deviceMax;
+        }
+      });
+      
+      // If auto-zoom is enabled, try to find active periods
+      if (document.getElementById('autoZoom').checked) {
+        const activePeriod = findActivePeriods();
+        if (activePeriod) {
+          globalXMin = activePeriod.min;
+          globalXMax = activePeriod.max;
+          console.log(`Auto-zooming to active period: ${globalXMin.toFixed(2)} to ${globalXMax.toFixed(2)} seconds`);
+        }
+      }
+      
+      // If no data found, use fallback
+      if (!isFinite(globalXMin) || !isFinite(globalXMax)) {
+        globalXMin = 0; 
+        globalXMax = 1;
+      }
+
+      console.log(`Chart time range: ${globalXMin.toFixed(2)} to ${globalXMax.toFixed(2)} seconds`);
+
+      ['X','Y','Z'].forEach(axis=>{
+        document.getElementById(`loading${axis}`).style.display='block';
+        
+        // Get visible traces for this axis
+        const traces=deviceData.flatMap((d,i)=>{
+          const k=`${d.serial}-${axis}`; if(!traceVisibility[k])return[];
+          return [{x:d.inertial.timestamp,y:d.inertial[axis.toLowerCase()],name:d.serial,mode:'lines',line:{color:colorScheme[i%colorScheme.length]}}];
+        });
+        
+        const layout = Object.assign({}, plotlyLayoutBase, { 
+          title: `${axis}-Axis Acceleration`, 
+          showlegend: false
+        });
+        
+        // Create the plot first
+        Plotly.newPlot(`chart${axis}`,traces,layout,plotlyConfig).then(() => {
+          // Then force the X-axis range after plot is created
+          Plotly.relayout(`chart${axis}`, {
+            'xaxis.range': [globalXMin, globalXMax],
+            'xaxis.autorange': false
           });
+          document.getElementById(`loading${axis}`).style.display='none';
         });
-        const layout = {...plotlyLayoutBase, title:axis+'-Axis Acceleration'};
-        Plotly.newPlot('chart'+axis, traces, layout, plotlyConfig)
-          .then(()=>{ document.getElementById('loading'+axis).style.display='none'; });
       });
     }
 
-    function exportData(){
-      if(!dataLoaded) return;
-      const ts = deviceData[0].inertial.timestamp;
-      const header = ['Time', ...deviceData.map(d=>d.serial).flatMap(s=>['X','Y','Z'].map(a=>s+'-'+a))].join(',');
-      const lines = [header];
-      ts.forEach((t,i)=>{
-        const row = [t];
-        deviceData.forEach(dev=>{
-          row.push(dev.inertial.x[i], dev.inertial.y[i], dev.inertial.z[i]);
-        });
-        lines.push(row.join(','));
-      });
-      const blob = new Blob([lines.join('\n')], {type:'text/csv'});
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a'); a.href=url; a.download='imu_data.csv'; a.click();
-      URL.revokeObjectURL(url);
+    function exportData(){if(!dataLoaded)return;const ts=deviceData[0].inertial.timestamp;
+      const hdr=['Time',...deviceData.map(d=>d.serial).flatMap(s=>['X','Y','Z'].map(a=>`${s}-${a}`))].join(',');
+      const rows=ts.map((t,i)=>[t,...deviceData.flatMap(d=>[d.inertial.x[i],d.inertial.y[i],d.inertial.z[i]])].join(','));
+      const csv=[hdr,...rows].join('\n');const blob=new Blob([csv],{type:'text/csv'}),url=URL.createObjectURL(blob);
+      const a=document.createElement('a');a.href=url;a.download='imu_data.csv';a.click();URL.revokeObjectURL(url);
     }
 
-    function clearData(){
-      deviceData=[]; dataLoaded=false;
-      document.getElementById('deviceToggles').innerHTML='<em style="color:#666;">Upload data to show devices</em>';
-      document.getElementById('traceToggles').innerHTML='<em style="color:#666;">Upload data to show traces</em>';
-      ['X','Y','Z'].forEach(axis=>Plotly.purge('chart'+axis));
-      document.getElementById('exportBtn').disabled=true;
-      document.getElementById('clearBtn').disabled=true;
-      ['totalPoints','duration','devices','sampleRate'].forEach(id=>document.getElementById(id).textContent = id==='sampleRate'?'-- Hz':'0');
+    function clearData(){deviceData=[];dataLoaded=false;
+      ['X','Y','Z'].forEach(a=>Plotly.purge(`chart${a}`));['traceControlsX','traceControlsY','traceControlsZ'].forEach(id=>document.getElementById(id).innerHTML='<em style="color:#666;">Upload data to show traces</em>');
+      document.getElementById('exportBtn').disabled=true;document.getElementById('clearBtn').disabled=true;
+      ['totalPoints','duration','devices','sampleRate'].forEach(id=>document.getElementById(id).textContent=(id==='sampleRate'?'-- Hz':'0'));
     }
   </script>
 </body>
