@@ -5,33 +5,32 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>IMU Acceleration Data Dashboard</title>
 
-  <!-- Pyodide, Plotly, D3, Stats.js -->
-  <script src="https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js"></script>
+  <!-- tiny data-URI favicon to prevent 404 -->
+  <link rel="icon" href="data:;base64,iVBORw0KGgo=" />
+
+  <!-- Pyodide (from unpkg), Plotly, D3, Stats.js -->
+  <script src="https://unpkg.com/pyodide@0.24.1/full/pyodide.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.26.0/plotly.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/stats.js/17/Stats.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/stats.js/r17/Stats.min.js"></script>
 
   <style>
-    /* ── BASE RESET & LAYOUT ───────────────────────────────────────────────── */
-    * { margin:0; padding:0; box-sizing:border-box; }
-    body { font-family:Inter, sans-serif; background: #1e3c72; color:#333; min-height:100vh; }
-    .main-container { display:grid; grid-template-rows:auto 1fr; min-height:100vh; }
-    h1,h3,h4 { margin-bottom:.5em; }
+    /* … (same CSS as before) … */
 
-    /* ── HEADER ─────────────────────────────────────────────────────────────── */
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:Inter, sans-serif; background:#1e3c72; color:#333; min-height:100vh; }
+    h1,h3,h4 { margin-bottom:.5em; }
+    .main-container { display:grid; grid-template-rows:auto 1fr; min-height:100vh; }
+
     .header {
-      background: linear-gradient(135deg,#667eea,#764ba2);
+      background:linear-gradient(135deg,#667eea,#764ba2);
       padding:2em; text-align:center; position:relative; color:#fff; overflow:hidden;
     }
     .header h1 { font-size:2rem; text-shadow:0 2px 6px rgba(0,0,0,0.3); }
     .header p { opacity:.9; }
-    .python-status {
-      position:absolute; top:1em; right:1em;
-      display:flex; align-items:center;
-      background:rgba(255,255,255,0.2); padding:.5em 1em;
-      border-radius:1em; backdrop-filter:blur(8px);
-      border:1px solid rgba(255,255,255,0.3); color:#fff;
-      font-size:.85rem;
+    .python-status { position:absolute; top:1em; right:1em; display:flex; align-items:center;
+      background:rgba(255,255,255,0.2); padding:.5em 1em; border-radius:1em; backdrop-filter:blur(8px);
+      border:1px solid rgba(255,255,255,0.3); color:#fff; font-size:.85rem;
     }
     .status-indicator {
       width:10px; height:10px; border-radius:50%;
@@ -41,7 +40,6 @@
     .status-indicator.error { background:#e74c3c; animation:none; }
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
 
-    /* ── DASHBOARD LAYOUT ───────────────────────────────────────────────────── */
     .dashboard { display:grid; grid-template-columns:350px 1fr; background:#f5f7fa; }
     .sidebar {
       background:rgba(255,255,255,0.95); padding:2em;
@@ -49,7 +47,6 @@
     }
     .charts-area { padding:2em; display:grid; grid-template-rows:1fr 1fr 1fr; gap:1.5em; }
 
-    /* ── CODE EDITOR ─────────────────────────────────────────────────────────── */
     .python-section { margin-bottom:2em; }
     .code-editor { background:#1e1e1e; border-radius:.5em; overflow:hidden; }
     .code-editor textarea {
@@ -65,7 +62,6 @@
     }
     .run-python-btn:disabled { background:#95a5a6; cursor:not-allowed; }
 
-    /* ── STATS GRID ─────────────────────────────────────────────────────────── */
     .stats-grid { display:grid; grid-template-columns:1fr 1fr; gap:1em; }
     .stat-card {
       background:rgba(255,255,255,0.8); padding:1em; border-radius:.5em;
@@ -74,24 +70,21 @@
     .stat-value { font-size:1.5rem; font-weight:700; }
     .stat-label { opacity:.8; font-size:.85rem; }
 
-    /* ── DEVICE & TRACE CONTROLS ───────────────────────────────────────────── */
-    .device-toggle,.trace-item {
+    .device-toggle, .trace-item {
       display:flex; align-items:center; padding:.5em; margin-bottom:.5em;
       border-radius:.5em; cursor:pointer; transition:background .2s,transform .2s;
     }
-    .device-toggle:hover,.trace-item:hover { background:rgba(0,0,0,0.05); transform:translateY(-2px); }
-    .device-checkbox,.trace-checkbox { margin-right:.75em; }
-    .color-dot,.trace-color {
+    .device-toggle:hover, .trace-item:hover { background:rgba(0,0,0,0.05); transform:translateY(-2px); }
+    .device-checkbox, .trace-checkbox { margin-right:.75em; }
+    .color-dot, .trace-color {
       width:16px; height:16px; border-radius:50%; margin-right:.75em;
       border:2px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,0.2);
     }
-    .device-name,.trace-name { font-weight:500; }
+    .device-name, .trace-name { font-weight:500; }
 
-    /* ── CHART CONTAINERS ──────────────────────────────────────────────────── */
     .chart-container {
       background:#fff; border-radius:1em; padding:1.5em;
-      box-shadow:0 8px 20px rgba(0,0,0,0.1); position:relative;
-      overflow:hidden;
+      box-shadow:0 8px 20px rgba(0,0,0,0.1); position:relative; overflow:hidden;
     }
     .chart-title { font-size:1.2rem; margin-bottom:1em; text-align:center; }
     .chart { width:100%; height:200px; }
@@ -102,17 +95,15 @@
     }
     @keyframes spin { to{transform:rotate(360deg);} }
 
-    /* ── ACTION BUTTONS ─────────────────────────────────────────────────────── */
     .action-buttons { display:flex; flex-direction:column; gap:.75em; margin-top:1.5em; }
     .btn { padding:.75em; border:none; border-radius:.5em; font-weight:600; cursor:pointer; }
     .btn-success { background:linear-gradient(135deg,#56ab2f,#a8e6cf); color:#fff; }
     .btn-secondary { background:linear-gradient(135deg,#6c757d,#495057); color:#fff; }
     .btn-secondary:disabled { background:#ccc; cursor:not-allowed; }
 
-    /* ── SMALL FOOTER MODS ─────────────────────────────────────────────────── */
     @media(max-width:1024px){
       .dashboard { grid-template-columns:1fr; }
-      .charts-area { grid-template-rows: repeat(3,180px); }
+      .charts-area { grid-template-rows:repeat(3,180px); }
     }
   </style>
 </head>
@@ -148,15 +139,7 @@
           <!-- Folder Upload -->
           <div style="margin-bottom:1em;">
             <label for="dataUpload">📂 Upload IMU “Data” Folder:</label><br/>
-            <input
-              type="file"
-              id="dataUpload"
-              webkitdirectory
-              directory
-              multiple
-              disabled
-              style="margin-top:.5em;"
-            />
+            <input type="file" id="dataUpload" webkitdirectory directory multiple disabled style="margin-top:.5em;" />
           </div>
 
           <!-- Code Editor -->
@@ -203,22 +186,10 @@ devices
         <section class="control-panel">
           <h3>📊 Data Statistics</h3>
           <div class="stats-grid">
-            <div class="stat-card">
-              <div class="stat-value" id="totalPoints">0</div>
-              <div class="stat-label">Data Points</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-value" id="duration">0 s</div>
-              <div class="stat-label">Duration</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-value" id="devices">0</div>
-              <div class="stat-label">Devices</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-value" id="sampleRate">400 Hz</div>
-              <div class="stat-label">Sample Rate</div>
-            </div>
+            <div class="stat-card"><div class="stat-value" id="totalPoints">0</div><div class="stat-label">Data Points</div></div>
+            <div class="stat-card"><div class="stat-value" id="duration">0 s</div>   <div class="stat-label">Duration</div></div>
+            <div class="stat-card"><div class="stat-value" id="devices">0</div>     <div class="stat-label">Devices</div></div>
+            <div class="stat-card"><div class="stat-value" id="sampleRate">400 Hz</div><div class="stat-label">Sample Rate</div></div>
           </div>
         </section>
 
@@ -241,7 +212,7 @@ devices
         </div>
       </aside>
 
-      <!-- Charts -->
+      <!-- Charts Area -->
       <div class="charts-area">
         <div class="chart-container">
           <div class="chart-title">X-Axis Acceleration (G)</div>
@@ -266,54 +237,36 @@ devices
   <div id="stats" style="position:fixed;top:10px;left:10px;z-index:10000;"></div>
 
   <script>
-  // ── GLOBALS ────────────────────────────────────────────────────────────────
-  let pyodide = null, deviceData = [], deviceVisibility = {}, traceVisibility = {}, pythonDataAvailable = false;
-  const colorScheme = ['#667eea','#764ba2','#f39c12','#e74c3c','#2ecc71','#e67e22'];
-  const plotlyConfig = {
-    responsive:true, displayModeBar:true,
-    modeBarButtonsToRemove:['pan2d','select2d','lasso2d','autoScale2d'],
-    displaylogo:false,
-    toImageButtonOptions:{format:'png',filename:'imu_data',height:500,width:1000,scale:2}
-  };
-  const plotlyLayout = {
-    margin:{l:50,r:30,t:40,b:50},
-    xaxis:{title:'Time (s)',gridcolor:'rgba(0,0,0,0.1)',zeroline:false},
-    yaxis:{title:"G's",gridcolor:'rgba(0,0,0,0.1)',zeroline:true,zerolinecolor:'rgba(0,0,0,0.3)'},
-    plot_bgcolor:'rgba(0,0,0,0)',paper_bgcolor:'rgba(0,0,0,0)',
-    font:{family:'Inter, sans-serif',size:12,color:'#2c3e50'},
-    hovermode:'x unified',
-    legend:{orientation:'v',x:1.02,y:1,xanchor:'left',bgcolor:'rgba(255,255,255,0.8)',bordercolor:'rgba(0,0,0,0.1)',borderwidth:1}
-  };
+    // ── GLOBALS ───────────────────────────────────────────────────────────
+    let pyodide=null, deviceData=[], deviceVisibility={}, traceVisibility={}, pythonDataAvailable=false;
+    const colorScheme=['#667eea','#764ba2','#f39c12','#e74c3c','#2ecc71','#e67e22'];
+    const plotlyConfig={responsive:true,displayModeBar:true,modeBarButtonsToRemove:['pan2d','select2d','lasso2d','autoScale2d'],displaylogo:false,toImageButtonOptions:{format:'png',filename:'imu_data',height:500,width:1000,scale:2}};
+    const plotlyLayout={margin:{l:50,r:30,t:40,b:50},xaxis:{title:'Time (s)',gridcolor:'rgba(0,0,0,0.1)',zeroline:false},yaxis:{title:"G's",gridcolor:'rgba(0,0,0,0.1)',zeroline:true,zerolinecolor:'rgba(0,0,0,0.3)'},plot_bgcolor:'rgba(0,0,0,0)',paper_bgcolor:'rgba(0,0,0,0)',font:{family:'Inter, sans-serif',size:12,color:'#2c3e50'},hovermode:'x unified',legend:{orientation:'v',x:1.02,y:1,xanchor:'left',bgcolor:'rgba(255,255,255,0.8)',bordercolor:'rgba(0,0,0,0.1)',borderwidth:1}};
 
-  // ── STATUS UPDATE ─────────────────────────────────────────────────────────
-  function updateStatus(text,type='loading'){
-    const txt = document.getElementById('statusText'),
-          ind = document.getElementById('statusIndicator');
-    txt.textContent=text;
-    ind.classList.remove('ready','error');
-    if(type==='ready') ind.classList.add('ready');
-    if(type==='error') ind.classList.add('error');
-  }
+    function updateStatus(text,type='loading'){
+      const txt=document.getElementById('statusText'), ind=document.getElementById('statusIndicator');
+      txt.textContent=text; ind.classList.remove('ready','error');
+      if(type==='ready') ind.classList.add('ready');
+      if(type==='error') ind.classList.add('error');
+    }
 
-  // ── INIT PYODIDE & MOCK ximu3csv ──────────────────────────────────────────
-  async function initializePython(){
-    try {
-      pyodide = await loadPyodide({indexURL:'https://cdn.jsdelivr.net/pyodide/v0.24.1/full/'});
-      updateStatus('Installing packages…');
-      await pyodide.loadPackage(['numpy']);
-      pyodide.runPython(`
+    // Initialize Pyodide and mock ximu3csv
+    async function initializePython(){
+      try {
+        pyodide=await loadPyodide({indexURL:'https://unpkg.com/pyodide@0.24.1/full/'});
+        updateStatus('Installing packages…');
+        await pyodide.loadPackage(['numpy']);
+        pyodide.runPython(`
 import sys
 from types import ModuleType, SimpleNamespace
 import numpy as np
-ximu3csv = ModuleType('ximu3csv')
+ximu3csv=ModuleType('ximu3csv')
 def mock_read(path):
-    t = np.linspace(0,10,4000)
-    data={'timestamp':t.tolist(),
-          'accelerometer':{
-            'x':(0.8*np.sin(2*np.pi*2*t)+0.1*np.random.randn(4000)).tolist(),
-            'y':(0.6*np.cos(2*np.pi*2.5*t)+0.1*np.random.randn(4000)).tolist(),
-            'z':(1.0+0.4*np.sin(2*np.pi*1.5*t)+0.1*np.random.randn(4000)).tolist()}
-         }
+    t=np.linspace(0,10,4000)
+    data={'timestamp':t.tolist(),'accelerometer':{
+        'x':(0.8*np.sin(2*np.pi*2*t)+0.1*np.random.randn(4000)).tolist(),
+        'y':(0.6*np.cos(2*np.pi*2.5*t)+0.1*np.random.randn(4000)).tolist(),
+        'z':(1.0+0.4*np.sin(2*np.pi*1.5*t)+0.1*np.random.randn(4000)).tolist()}}
     def make_dev(name):
         return SimpleNamespace(
             serial_number=name,
@@ -327,175 +280,166 @@ def mock_read(path):
             )
         )
     return [make_dev("IMU-Alpha"),make_dev("IMU-Beta")]
-def mock_resample(devices,rate):
-    return devices
-ximu3csv.read=mock_read
-ximu3csv.resample=mock_resample
+def mock_resample(devices,rate): return devices
+ximu3csv.read=mock_read; ximu3csv.resample=mock_resample
 sys.modules['ximu3csv']=ximu3csv
-      `);
-      // enable folder picker once ready
-      document.getElementById('dataUpload').disabled = false;
-      updateStatus('Python Ready','ready');
-    } catch(e){
-      console.error(e);
-      updateStatus('Failed to load Python','error');
-    } finally {
-      document.getElementById('loadingOverlay').style.display='none';
+        `);
+        document.getElementById('dataUpload').disabled=false;
+        updateStatus('Python Ready','ready');
+      } catch(e){
+        console.error(e);
+        updateStatus('Failed to load Python','error');
+      } finally {
+        document.getElementById('loadingOverlay').style.display='none';
+      }
     }
-  }
 
-  // ── FILESYSTEM HELPERS ─────────────────────────────────────────────────────
-  function mkdirTree(path){
-    let parts=path.split('/'), curr='';
-    for(let p of parts){
-      curr+= '/'+p;
-      try{ pyodide.FS.mkdir(curr); }catch{}
+    // Helpers to make directories
+    function mkdirTree(path){
+      let parts=path.split('/'), curr='';
+      for(let p of parts){
+        curr += '/'+p;
+        try{ pyodide.FS.mkdir(curr); }catch{}
+      }
     }
-  }
 
-  document.getElementById('dataUpload').addEventListener('change', async evt=>{
-    if(!pyodide) return alert("Python not ready");
-    const files = evt.target.files;
-    try{ pyodide.FS.mkdir('/Data'); }catch{}
-    for(let file of files){
-      const rel = file.webkitRelativePath;  // e.g. "Data/device1.csv"
-      const full = '/'+rel;
-      const dir = full.substring(0, full.lastIndexOf('/'));
-      mkdirTree(dir);
-      const buf = await file.arrayBuffer();
-      pyodide.FS.writeFile(full, new Uint8Array(buf));
-    }
-    alert(`✅ Uploaded ${files.length} files into /Data/`);
-  });
+    // Handle folder upload
+    document.getElementById('dataUpload').addEventListener('change', async evt=>{
+      if(!pyodide) return alert("Python not ready");
+      const files=evt.target.files;
+      try{ pyodide.FS.mkdir('/Data'); }catch{}
+      for(let file of files){
+        const rel=file.webkitRelativePath, full='/'+rel, dir=full.substring(0,full.lastIndexOf('/'));
+        mkdirTree(dir);
+        const buf=await file.arrayBuffer();
+        pyodide.FS.writeFile(full,new Uint8Array(buf));
+      }
+      alert(`✅ Uploaded ${files.length} files into /Data/`);
+    });
 
-  // ── RUN USER CODE ─────────────────────────────────────────────────────────
-  function runPythonCode(){
-    updateStatus('Running code…');
-    try {
-      const code = document.getElementById('pythonCode').value;
-      const full = `
+    // Run user code
+    function runPythonCode(){
+      updateStatus('Running code…');
+      try {
+        const userCode=document.getElementById('pythonCode').value;
+        const full = `
 import ximu3csv
 devices = ximu3csv.resample(ximu3csv.read("Data"),400)
-${code}
+${userCode}
 `;
-      const pyVal = pyodide.runPython(full);
-      const jsVal = pyVal.toJs({dict:false});
-      deviceData = jsVal;
-      pythonDataAvailable = true;
-      document.getElementById('clearBtn').disabled = false;
-      updateStatus('Data Loaded','ready');
-      updateStats(); renderDeviceControls(); renderTraceControls(); renderCharts();
-    } catch(err){
-      console.error(err);
-      const out = document.getElementById('pythonOutput');
-      out.textContent = err;
-      out.style.display = 'block';
-      updateStatus('Error','error');
+        const pyVal=pyodide.runPython(full);
+        deviceData=pyVal.toJs({dict:false});
+        pythonDataAvailable=true;
+        document.getElementById('clearBtn').disabled=false;
+        updateStatus('Data Loaded','ready');
+        updateStats(); renderDeviceControls(); renderTraceControls(); renderCharts();
+      } catch(err){
+        console.error(err);
+        const out=document.getElementById('pythonOutput');
+        out.textContent=err; out.style.display='block';
+        updateStatus('Error','error');
+      }
     }
-  }
 
-  // ── UPDATE STATISTICS ─────────────────────────────────────────────────────
-  function updateStats(){
-    const ts = deviceData[0].inertial.timestamp.toJs();
-    document.getElementById('totalPoints').textContent = ts.length * deviceData.length;
-    document.getElementById('duration').textContent = ts[ts.length-1].toFixed(2)+' s';
-    document.getElementById('devices').textContent = deviceData.length;
-    document.getElementById('sampleRate').textContent = '400 Hz';
-  }
+    // Update sidebar stats
+    function updateStats(){
+      const ts=deviceData[0].inertial.timestamp.toJs();
+      document.getElementById('totalPoints').textContent=ts.length*deviceData.length;
+      document.getElementById('duration').textContent=ts[ts.length-1].toFixed(2)+' s';
+      document.getElementById('devices').textContent=deviceData.length;
+      document.getElementById('sampleRate').textContent='400 Hz';
+    }
 
-  // ── DEVICE CONTROLS ───────────────────────────────────────────────────────
-  function renderDeviceControls(){
-    const c = document.getElementById('deviceToggles');
-    c.innerHTML = '';
-    deviceData.forEach((dev,i)=>{
-      const name = dev.serial_number;
-      deviceVisibility[name] = true;
-      const div = document.createElement('div'); div.className='device-toggle';
-      const cb  = document.createElement('input'); cb.type='checkbox'; cb.checked=true; cb.className='device-checkbox';
-      cb.onchange = ()=>{ deviceVisibility[name]=cb.checked; renderCharts(); renderTraceControls(); };
-      const dot = document.createElement('div'); dot.className='color-dot'; dot.style.background=colorScheme[i%colorScheme.length];
-      const lbl = document.createElement('div'); lbl.className='device-name'; lbl.textContent=name;
-      div.append(cb,dot,lbl); c.append(div);
-    });
-  }
-
-  // ── TRACE CONTROLS ────────────────────────────────────────────────────────
-  function renderTraceControls(){
-    const c = document.getElementById('traceToggles');
-    c.innerHTML = '';
-    ['x','y','z'].forEach(axis=>{
+    // Render device toggles
+    function renderDeviceControls(){
+      const c=document.getElementById('deviceToggles'); c.innerHTML='';
       deviceData.forEach((dev,i)=>{
-        const name = dev.serial_number;
-        const key = `${name}-${axis}`;
-        if(traceVisibility[key]===undefined) traceVisibility[key]=true;
-        const div = document.createElement('div'); div.className='trace-item';
-        const cb  = document.createElement('input'); cb.type='checkbox'; cb.checked=traceVisibility[key]; cb.className='trace-checkbox';
-        cb.onchange = ()=>{ traceVisibility[key]=cb.checked; renderCharts(); };
-        const dot = document.createElement('div'); dot.className='trace-color'; dot.style.background=colorScheme[i%colorScheme.length];
-        const lbl = document.createElement('div'); lbl.className='trace-name'; lbl.textContent=`${name}/${axis.toUpperCase()}`;
+        const name=dev.serial_number;
+        deviceVisibility[name]=true;
+        const div=document.createElement('div'); div.className='device-toggle';
+        const cb=document.createElement('input'); cb.type='checkbox'; cb.checked=true; cb.className='device-checkbox';
+        cb.onchange=()=>{ deviceVisibility[name]=cb.checked; renderCharts(); renderTraceControls(); };
+        const dot=document.createElement('div'); dot.className='color-dot'; dot.style.background=colorScheme[i%colorScheme.length];
+        const lbl=document.createElement('div'); lbl.className='device-name'; lbl.textContent=name;
         div.append(cb,dot,lbl); c.append(div);
       });
-    });
-  }
+    }
 
-  // ── RENDER PLOTS ──────────────────────────────────────────────────────────
-  function renderCharts(){
-    ['X','Y','Z'].forEach((Comp,i)=>{
-      const axis = Comp.toLowerCase(), cid=`chart${Comp}`, lid=`loading${Comp}`;
-      document.getElementById(lid).style.display='block';
-      const traces = [];
-      deviceData.forEach((dev,j)=>{
-        const name = dev.serial_number;
-        if(!deviceVisibility[name]||!traceVisibility[`${name}-${axis}`]) return;
-        const ary = dev.inertial.accelerometer[axis].toJs();
-        const ts  = dev.inertial.timestamp.toJs().map(v=>v/1e6);
-        traces.push({ x:ts, y:ary, name, mode:'lines', line:{color:colorScheme[j%colorScheme.length]} });
+    // Render trace toggles
+    function renderTraceControls(){
+      const c=document.getElementById('traceToggles'); c.innerHTML='';
+      ['x','y','z'].forEach(axis=>{
+        deviceData.forEach((dev,i)=>{
+          const name=dev.serial_number, key=`${name}-${axis}`;
+          if(traceVisibility[key]===undefined) traceVisibility[key]=true;
+          const div=document.createElement('div'); div.className='trace-item';
+          const cb=document.createElement('input'); cb.type='checkbox'; cb.checked=traceVisibility[key]; cb.className='trace-checkbox';
+          cb.onchange=()=>{ traceVisibility[key]=cb.checked; renderCharts(); };
+          const dot=document.createElement('div'); dot.className='trace-color'; dot.style.background=colorScheme[i%colorScheme.length];
+          const lbl=document.createElement('div'); lbl.className='trace-name'; lbl.textContent=`${name}/${axis.toUpperCase()}`;
+          div.append(cb,dot,lbl); c.append(div);
+        });
       });
-      const layout = JSON.parse(JSON.stringify(plotlyLayout));
-      layout.title = { text:`${Comp}-Axis Acceleration` };
-      Plotly.newPlot(cid,traces,layout,plotlyConfig).then(_=>document.getElementById(lid).style.display='none');
-    });
-  }
+    }
 
-  // ── EXPORT CSV ────────────────────────────────────────────────────────────
-  function exportData(){
-    if(!pythonDataAvailable) return;
-    const ts = deviceData[0].inertial.timestamp.toJs().map(v=>v/1e6);
-    const header = ['Time', ...deviceData.map(d=>d.serial_number).flatMap(n=>['X','Y','Z'].map(a=>`${n}-${a}`))].join(',');
-    const lines = [header];
-    ts.forEach((t,i)=>{
-      const row = [t];
-      deviceData.forEach(dev=>{
-        const a = dev.inertial.accelerometer;
-        row.push(a.x.toJs()[i], a.y.toJs()[i], a.z.toJs()[i]);
+    // Render Plotly charts
+    function renderCharts(){
+      ['X','Y','Z'].forEach((Comp,i)=>{
+        const axis=Comp.toLowerCase(), cid=`chart${Comp}`, lid=`loading${Comp}`;
+        document.getElementById(lid).style.display='block';
+        const traces=[];
+        deviceData.forEach((dev,j)=>{
+          const name=dev.serial_number;
+          if(!deviceVisibility[name]||!traceVisibility[`${name}-${axis}`]) return;
+          const ary=dev.inertial.accelerometer[axis].toJs();
+          const ts=dev.inertial.timestamp.toJs().map(v=>v/1e6);
+          traces.push({x:ts,y:ary,name,mode:'lines',line:{color:colorScheme[j%colorScheme.length]}});
+        });
+        const layout=JSON.parse(JSON.stringify(plotlyLayout));
+        layout.title={text:`${Comp}-Axis Acceleration`};
+        Plotly.newPlot(cid,traces,layout,plotlyConfig)
+          .then(_=>document.getElementById(lid).style.display='none');
       });
-      lines.push(row.join(','));
-    });
-    const blob = new Blob([lines.join('\n')], {type:'text/csv'});
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href     = url; a.download='imu_data.csv'; a.click();
-    URL.revokeObjectURL(url);
-  }
+    }
 
-  // ── CLEAR DASHBOARD ──────────────────────────────────────────────────────
-  function clearData(){
-    deviceData=[]; pythonDataAvailable=false;
-    document.getElementById('deviceToggles').innerHTML='<em style="color:#666;">Run code to show devices</em>';
-    document.getElementById('traceToggles' ).innerHTML='<em style="color:#666;">Run code to show traces</em>';
-    ['X','Y','Z'].forEach(c=>Plotly.purge(`chart${c}`));
-    document.getElementById('clearBtn').disabled=true;
-    updateStatus('Ready','ready');
-  }
+    // Export CSV
+    function exportData(){
+      if(!pythonDataAvailable) return;
+      const ts=deviceData[0].inertial.timestamp.toJs().map(v=>v/1e6);
+      const header=['Time',...deviceData.map(d=>d.serial_number).flatMap(n=>['X','Y','Z'].map(a=>`${n}-${a}`))].join(',');
+      const lines=[header];
+      ts.forEach((t,i)=>{
+        const row=[t];
+        deviceData.forEach(dev=>{
+          const a=dev.inertial.accelerometer;
+          row.push(a.x.toJs()[i],a.y.toJs()[i],a.z.toJs()[i]);
+        });
+        lines.push(row.join(','));
+      });
+      const blob=new Blob([lines.join('\n')],{type:'text/csv'}),
+            url=URL.createObjectURL(blob),
+            a=document.createElement('a');
+      a.href=url; a.download='imu_data.csv'; a.click();
+      URL.revokeObjectURL(url);
+    }
 
-  // ── PERFORMANCE MONITOR ─────────────────────────────────────────────────
-  const stats = new Stats(); stats.showPanel(0);
-  document.getElementById('stats').appendChild(stats.dom);
-  function animate(){ stats.begin(); stats.end(); requestAnimationFrame(animate); }
-  requestAnimationFrame(animate);
+    // Clear dashboard
+    function clearData(){
+      deviceData=[]; pythonDataAvailable=false;
+      document.getElementById('deviceToggles').innerHTML='<em style="color:#666;">Run code to show devices</em>';
+      document.getElementById('traceToggles').innerHTML ='<em style="color:#666;">Run code to show traces</em>';
+      ['X','Y','Z'].forEach(c=>Plotly.purge(`chart${c}`));
+      document.getElementById('clearBtn').disabled=true;
+      updateStatus('Ready','ready');
+    }
 
-  // ── BOOT ─────────────────────────────────────────────────────────────────
-  initializePython();
+    // Stats.js performance monitor
+    const stats=new Stats(); stats.showPanel(0);
+    document.getElementById('stats').appendChild(stats.dom);
+    ;(function animate(){ stats.begin(); stats.end(); requestAnimationFrame(animate); })();
+
+    // Kick things off
+    initializePython();
   </script>
 </body>
 </html>
