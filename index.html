@@ -1,4 +1,3 @@
-<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -64,6 +63,10 @@
             <span id="sampleRateNote">Calculated from timestamps</span>
           </div>
         </div>
+        <div class="stat-card"><div class="stat-value" id="peakAccel">-- g</div><div class="stat-label">Peak Acceleration</div></div>
+        <div class="stat-card"><div class="stat-value" id="avgMagnitude">-- g</div><div class="stat-label">Avg Magnitude</div></div>
+        <div class="stat-card"><div class="stat-value" id="activeTime">-- s</div><div class="stat-label">Active Time</div></div>
+        <div class="stat-card"><div class="stat-value" id="dataQuality">--%</div><div class="stat-label">Data Quality</div></div>
       </section>
 
       <!-- Chart X -->
@@ -166,10 +169,50 @@
         }
       }
       
+      // Calculate additional metrics
+      let peakAccel = 0, totalMagnitude = 0, magnitudeCount = 0, activeCount = 0;
+      let validSamples = 0, totalSamples = 0;
+      
+      deviceData.forEach(device => {
+        const x = device.inertial.x;
+        const y = device.inertial.y;
+        const z = device.inertial.z;
+        
+        for (let i = 0; i < x.length; i++) {
+          if (!isNaN(x[i]) && !isNaN(y[i]) && !isNaN(z[i])) {
+            // Calculate acceleration magnitude
+            const magnitude = Math.sqrt(x[i]*x[i] + y[i]*y[i] + z[i]*z[i]);
+            
+            // Track peak acceleration
+            const totalAccel = Math.sqrt(x[i]*x[i] + y[i]*y[i] + (z[i]-1)*(z[i]-1)); // Remove gravity from Z
+            if (totalAccel > peakAccel) peakAccel = totalAccel;
+            
+            // Track average magnitude
+            totalMagnitude += magnitude;
+            magnitudeCount++;
+            
+            // Track "active" periods (significant deviation from 1g)
+            if (Math.abs(magnitude - 1.0) > 0.2) activeCount++;
+            
+            validSamples++;
+          }
+          totalSamples++;
+        }
+      });
+      
+      const avgMagnitude = magnitudeCount > 0 ? totalMagnitude / magnitudeCount : 0;
+      const activeTime = avgSampleRate > 0 ? activeCount / avgSampleRate : 0;
+      const dataQuality = totalSamples > 0 ? (validSamples / totalSamples) * 100 : 0;
+      
+      // Update display
       document.getElementById('totalPoints').textContent=pts;
       document.getElementById('duration').textContent=`${dur.toFixed(2)} s`;
       document.getElementById('devices').textContent=devs;
       document.getElementById('sampleRate').textContent=avgSampleRate > 0 ? `${avgSampleRate} Hz` : '-- Hz';
+      document.getElementById('peakAccel').textContent=peakAccel > 0 ? `${peakAccel.toFixed(2)} g` : '-- g';
+      document.getElementById('avgMagnitude').textContent=avgMagnitude > 0 ? `${avgMagnitude.toFixed(2)} g` : '-- g';
+      document.getElementById('activeTime').textContent=activeTime > 0 ? `${activeTime.toFixed(1)} s` : '-- s';
+      document.getElementById('dataQuality').textContent=dataQuality > 0 ? `${dataQuality.toFixed(1)}%` : '--%';
     }
 
     function renderPerChartControls(){
@@ -287,7 +330,13 @@
     function clearData(){deviceData=[];dataLoaded=false;
       ['X','Y','Z'].forEach(a=>Plotly.purge(`chart${a}`));['traceControlsX','traceControlsY','traceControlsZ'].forEach(id=>document.getElementById(id).innerHTML='<em style="color:#666;">Upload data to show traces</em>');
       document.getElementById('exportBtn').disabled=true;document.getElementById('clearBtn').disabled=true;
-      ['totalPoints','duration','devices','sampleRate'].forEach(id=>document.getElementById(id).textContent=(id==='sampleRate'?'-- Hz':'0'));
+      // Reset all stats
+      ['totalPoints','duration','devices'].forEach(id=>document.getElementById(id).textContent='0');
+      document.getElementById('sampleRate').textContent='-- Hz';
+      document.getElementById('peakAccel').textContent='-- g';
+      document.getElementById('avgMagnitude').textContent='-- g';
+      document.getElementById('activeTime').textContent='-- s';
+      document.getElementById('dataQuality').textContent='--%';
     }
   </script>
 </body>
