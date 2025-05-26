@@ -57,7 +57,13 @@
         <div class="stat-card"><div class="stat-value" id="totalPoints">0</div><div class="stat-label">Data Points</div></div>
         <div class="stat-card"><div class="stat-value" id="duration">0 s</div><div class="stat-label">Duration</div></div>
         <div class="stat-card"><div class="stat-value" id="devices">0</div><div class="stat-label">Devices</div></div>
-        <div class="stat-card"><div class="stat-value" id="sampleRate">-- Hz</div><div class="stat-label">Sample Rate</div></div>
+        <div class="stat-card">
+          <div class="stat-value" id="sampleRate">-- Hz</div>
+          <div class="stat-label">Actual Sample Rate</div>
+          <div style="font-size:0.7rem;opacity:0.7;margin-top:0.25em;">
+            <span id="sampleRateNote">Calculated from timestamps</span>
+          </div>
+        </div>
       </section>
 
       <!-- Chart X -->
