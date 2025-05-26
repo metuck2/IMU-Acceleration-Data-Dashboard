@@ -136,11 +136,34 @@
     function updateStats(){
       const devs=deviceData.length,pts=deviceData.reduce((s,d)=>s+d.inertial.timestamp.length,0);
       const durArr=deviceData.map(d=>Math.max(...d.inertial.timestamp)-Math.min(...d.inertial.timestamp));
-      const dur=durArr.length?Math.max(...durArr):0, sr=dur?Math.round(deviceData[0].inertial.timestamp.length/dur):0;
+      const dur=durArr.length?Math.max(...durArr):0;
+      
+      // Calculate actual sample rate from timestamp intervals
+      let avgSampleRate = 0;
+      if (deviceData.length > 0 && deviceData[0].inertial.timestamp.length > 1) {
+        const timestamps = deviceData[0].inertial.timestamp;
+        let totalInterval = 0;
+        let intervalCount = 0;
+        
+        // Calculate average time interval between consecutive samples
+        for (let i = 1; i < Math.min(100, timestamps.length); i++) { // Use first 100 samples for accuracy
+          const interval = timestamps[i] - timestamps[i-1];
+          if (interval > 0) { // Avoid division by zero
+            totalInterval += interval;
+            intervalCount++;
+          }
+        }
+        
+        if (intervalCount > 0) {
+          const avgInterval = totalInterval / intervalCount;
+          avgSampleRate = Math.round(1 / avgInterval); // Convert interval to frequency
+        }
+      }
+      
       document.getElementById('totalPoints').textContent=pts;
       document.getElementById('duration').textContent=`${dur.toFixed(2)} s`;
       document.getElementById('devices').textContent=devs;
-      document.getElementById('sampleRate').textContent=`${sr} Hz`;
+      document.getElementById('sampleRate').textContent=avgSampleRate > 0 ? `${avgSampleRate} Hz` : '-- Hz';
     }
 
     function renderPerChartControls(){
